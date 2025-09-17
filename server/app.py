@@ -227,6 +227,9 @@ def build_agent() -> Agent:
             •	Não inventar: "Não há dados de custos disponíveis, portanto não é possível calcular margem de contribuição real."
             •	Claro: "AGV2508 (agulha múltipla) cresceu 50% em volume e manteve preço estável ➡ oportunidade de ajuste de preço."
             •	Executivo: Relatórios sempre trazem tabelas + bullets + gráficos.
+
+            Observações:
+            •   Caso o ano não esteja informado na pergunta, assuma o ano atual.
             """
         ),
         model=model,
