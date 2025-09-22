@@ -9,6 +9,7 @@ from typing import Deque, Dict, List, Optional
 from urllib.parse import urlsplit
 
 import streamlit as st
+import yaml
 from agno.agent import Agent
 from agno.models.message import Message
 from agno.run.agent import RunOutput
@@ -20,6 +21,7 @@ try:
     load_dotenv()
 except ImportError:
     pass
+
 
 # Variáveis de ambiente
 DATABASE_URL = os.getenv("DATABASE_URL")
@@ -155,6 +157,37 @@ def _call_match_fn(
     }
 
 
+def load_instructions(path: str = "./instructions.yaml") -> str:
+    with open(path, "r", encoding="utf-8") as f:
+        data = yaml.safe_load(f)
+    return (
+        data["agent"]["description"]
+        + "\n\nRegras de Conduta\n"
+        + data["agent"]["rules"]
+        + "\n\n🔑 Exemplos\n"
+        + data["agent"]["examples"]
+        + "\n\n📌 Regras SQL\n"
+        + data["agent"]["sql_guidelines"]
+        + "\n\n📌 Colunas\n"
+        + data["agent"]["available_columns"]
+    )
+
+
+def load_users_from_env() -> dict:
+    users = {}
+    for key, value in os.environ.items():
+        if key.startswith("USER"):
+            parts = value.split(":", 1)  # garante no máximo 2 pedaços
+            if len(parts) == 2:
+                user, pwd = parts
+                users[user.strip()] = pwd.strip()
+            else:
+                print(
+                    f"[Login] Variável {key} ignorada (esperado 'usuario:senha', recebido: '{value}')"
+                )
+    return users
+
+
 # =============== TOOLS ===============
 def query_documents(
     query: str,
@@ -229,58 +262,7 @@ def build_agent() -> Agent:
     model = OpenAIChat(id=DEFAULT_OPENAI_MODEL)
     return Agent(
         name="PricingAgent",
-        instructions=(
-            "Você é um Agente de Pricing com QI elevado, mais de 20 anos de experiência em precificação, vendas e estratégia comercial, atuando como se fosse um diretor sênior de Pricing. "
-            "Seu papel é apoiar Diretoria, CEO e Vendas com análises profundas, claras e fundamentadas.\n\n"
-            "Regras de Conduta\n"
-            "1. Nunca inventar dados — se não houver informação na base, diga explicitamente que falta dado.\n"
-            "2. Usar somente as informações disponíveis em planilhas, relatórios e integrações.\n"
-            "3. Linguagem executiva, objetiva e clara, como se estivesse falando com C-Level.\n"
-            "4. Sempre estruturar relatórios em seções fixas (Resumo, Performance, Preços, Insights, Recomendações).\n"
-            "5. Gerar gráficos, tabelas e comparativos sempre que possível.\n"
-            "6. Não ser prolixo, mas também não ser superficial — o objetivo é decisão rápida.\n"
-            "7. Destacar alertas e oportunidades com símbolos (➡, 🔴, 🟢).\n\n"
-            "🔑 Exemplos de Resposta Esperada\n"
-            "• Não inventar: 'Não há dados de custos disponíveis, portanto não é possível calcular margem de contribuição real.'\n"
-            "• Claro: 'AGV2508 (agulha múltipla) cresceu 50% em volume e manteve preço estável ➡ oportunidade de ajuste de preço.'\n"
-            "• Executivo: Relatórios sempre trazem tabelas + bullets + gráficos.\n\n"
-            "📌 Regras adicionais de uso das ferramentas:\n"
-            "- Se não houver ano informado na pergunta, assuma sempre o ano atual para consultas e interpretações.\n"
-            "- Se a pergunta envolver datas, clientes, produtos, faturamento, margem ou análises quantitativas, "
-            "gere uma query SQL para a view documents_view e execute usando a ferramenta run_sql.\n"
-            "- Se a pergunta exigir busca semântica em documentos/textos, use query_documents.\n"
-            "- Se exigir ambos (filtro + semântica), primeiro use run_sql para reduzir o conjunto e depois aplique query_documents.\n"
-            "- Sempre prefira SQL (run_sql) quando for possível responder de forma exata com dados estruturados.\n"
-            "📌 Ao gerar SQL para a view documents_view:\n"
-            "- Sempre use a sintaxe do PostgreSQL.\n"
-            "- Para buscar clientes, produtos ou marcas, use sempre ILIKE '%texto%' em vez de =, para garantir correspondência parcial e insensível a maiúsculas/minúsculas.\n"
-            "- Para extrair mês e ano de uma coluna DATE, use EXTRACT(MONTH FROM emissao) e EXTRACT(YEAR FROM emissao).\n"
-            "- Se não houver ano informado na pergunta, assuma sempre o ano atual para consultas e interpretações.\n"
-            "- Nunca use funções como MONTH() ou YEAR(), pois não existem em PostgreSQL.\n"
-            "- Prefira filtros com BETWEEN 'YYYY-MM-DD' AND 'YYYY-MM-DD' quando possível.\n"
-            "- Caso não seja informado o ano na conversa, assuma o ano atual (2025).\n"
-            "📌 Colunas disponíveis na view documents_view:\n"
-            "- produto (texto)\n"
-            "- cliente (texto)\n"
-            "- cidade (texto)\n"
-            "- uf (texto)\n"
-            "- marca (texto)\n"
-            "- tipo_estoque (texto)\n"
-            "- faturamento (numérico)\n"
-            "- mc (numérico)\n"
-            "- cmv (numérico)\n"
-            "- icms (numérico)\n"
-            "- pis (numérico)\n"
-            "- cofins (numérico)\n"
-            "- frete (numérico)\n"
-            "- preco_unitario (numérico)\n"
-            "- quantidade (numérico)\n"
-            "- comissao (numérico)\n"
-            "- emissao (date)\n"
-            "- nota_fiscal (texto)\n"
-            "- descricao (texto)\n"
-            "- percentual_mc (texto)\n"
-        ),
+        instructions=load_instructions(),
         model=model,
         tools=[
             query_documents,
@@ -303,6 +285,33 @@ def _extract_response_text(response: RunOutput) -> str:
 
 
 # =============== INTERFACE STREAMLIT ===============
+
+# ====== LOGIN ======
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+
+if not st.session_state.logged_in:
+    st.title("🔐 Login no Pricing AI")
+
+    username = st.text_input("Usuário")
+    password = st.text_input("Senha", type="password")
+    login_button = st.button("Entrar")
+
+    # Carregar usuários (pode escolher env ou txt)
+    users = load_users_from_env()
+
+    if login_button:
+        if username in users and users[username] == password:
+            st.session_state.logged_in = True
+            st.session_state.username = username
+            st.success(f"Bem-vindo, {username}!")
+            st.rerun()  # recarregar a página já logado
+        else:
+            st.error("Usuário ou senha inválidos.")
+    st.stop()  # Impede o resto da app de rodar se não logado
+
+
+# ====== AGENTE ======
 st.set_page_config(
     page_title="CralLabs - Pricing AI", page_icon=":bar_chart:", layout="centered"
 )
@@ -351,11 +360,11 @@ if user_input:
         for char in reply_text:
             rendered += char
             placeholder.markdown(f"**Agente:** {rendered}|")
-            time.sleep(0.015)
+            time.sleep(0.005)
             placeholder.markdown(f"**Agente:** {reply_text}")
             placeholder.markdown(f"**Agente:** {rendered}|")
-            time.sleep(0.015)
+            time.sleep(0.005)
             placeholder.markdown(f"**Agente:** {reply_text}")
             placeholder.markdown(f"**Agente:** {rendered}|")
-            time.sleep(0.015)
+            time.sleep(0.005)
             placeholder.markdown(f"**Agente:** {reply_text}")
