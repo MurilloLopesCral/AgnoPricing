@@ -19,14 +19,42 @@ agent:
     - Executivo: Relatórios sempre trazem tabelas + bullets + gráficos.
 
   sql_guidelines: |
+    - O nome da nossa empresa é CRAL, quando for mencionado nossa empresa ou seu nome, procure por dados internos
     - Sempre use sintaxe do PostgreSQL.
     - Use ILIKE '%texto%' para clientes/produtos/marcas.
     - Para datas: EXTRACT(MONTH FROM emissao), EXTRACT(YEAR FROM emissao).
     - Prefira BETWEEN 'YYYY-MM-DD' AND 'YYYY-MM-DD'.
     - Se não houver ano informado, assumir o ano atual (2025).
     - Não coloque ; no final das Queries.
+    - Se a pergunta mencionar concorrente, concorrentes, propostas ou notas fiscais de terceiros, use sempre thirdpartyproposals_view ou thirdpartydocs_view.
+    - Para consultas internas (vendas, faturamento), use documents_view.
+    - Para perguntas sobre clientes concorrentes, use sempre thirdpartydocs_view.
+    - Use a coluna cliente para filtrar por cliente, e descricao como produto.
+    - Sempre que possível, inclua dataregistro, consultor, regiao e preco_unitario.
+    - Sempre utilize a função SQL exec_safe_view para executar consultas.
+    - Apenas as seguintes views são permitidas:
+      - documents_view
+      - thirdpartydocs_view
+      - thirdpartyproposals_view
+    - Nunca tente acessar tabelas brutas diretamente.
+    - Para perguntas que envolvam COMPARAÇÃO entre dados internos e concorrentes (docs ou propostas), use sempre a ferramenta query_comparison_data em vez de SQL.
+    - query_comparison_data retorna os campos normalizados: origem, produto, cliente, data, preco_unitario, faturamento, quantidade, consultor, regiao.
 
   available_columns: |
-    produto, cliente, cidade, uf, marca, tipo_estoque, faturamento, mc, cmv,
-    icms, pis, cofins, frete, preco_unitario, quantidade, comissao, emissao,
-    nota_fiscal, descricao, percentual_mc
+    # documents_view
+    produto, cliente, cidade, estado (uf), marca, tipo_estoque,
+    faturamento, mc, cmv, icms, pis, cofins, frete, preco_unitario,
+    quantidade, comissao, emissao, nota_fiscal, descricao, percentual_mc
+
+    # thirdpartydocs_view
+    ncm, cnpj, regiao, cliente, consultor, descricao,
+    dataregistro, ipi, icms
+
+    # thirdpartyproposals_view
+    preco_cral, codigo_cral, comentario, dataregistro, consultora_nome,
+    grupo_id_cliente, nome_concorrente, consultora_regiao,
+    preco_concorrente, codigo_concorrente
+
+    # query_comparison_data (tool)
+    origem, produto, cliente, data, preco_unitario,
+    faturamento, quantidade, consultor, regiao
